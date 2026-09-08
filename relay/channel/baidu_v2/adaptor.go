@@ -36,8 +36,24 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
-	//TODO implement me
-	return nil, errors.New("not implemented")
+	switch info.RelayMode {
+	case constant.RelayModeImagesGenerations:
+		switch qianfanImageGenerationAPI(info.UpstreamModelName) {
+		case qianfanImageAPIAir:
+			return buildQianfanAirImageRequest(request)
+		case qianfanImageAPIErnie:
+			return buildQianfanErnieImageRequest(request)
+		default:
+			return buildQianfanGeneralImageRequest(request)
+		}
+	case constant.RelayModeImagesEdits:
+		if c != nil && c.Request != nil && strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
+			return buildQianfanImageEditRequestFromForm(c, request)
+		}
+		return buildQianfanImageEditRequest(request)
+	default:
+		return nil, fmt.Errorf("unsupported relay mode: %d", info.RelayMode)
+	}
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
@@ -50,7 +66,14 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	case constant.RelayModeEmbeddings:
 		return fmt.Sprintf("%s/v2/embeddings", info.ChannelBaseUrl), nil
 	case constant.RelayModeImagesGenerations:
-		return fmt.Sprintf("%s/v2/images/generations", info.ChannelBaseUrl), nil
+		switch qianfanImageGenerationAPI(info.UpstreamModelName) {
+		case qianfanImageAPIAir:
+			return fmt.Sprintf("%s/v2/musesteamer/images/generations", info.ChannelBaseUrl), nil
+		case qianfanImageAPIErnie:
+			return fmt.Sprintf("%s/v2/ernie-image/images/generations", info.ChannelBaseUrl), nil
+		default:
+			return fmt.Sprintf("%s/v2/images/generations", info.ChannelBaseUrl), nil
+		}
 	case constant.RelayModeImagesEdits:
 		return fmt.Sprintf("%s/v2/images/edits", info.ChannelBaseUrl), nil
 	case constant.RelayModeRerank:
@@ -98,12 +121,11 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {
-	return nil, errors.New("not implemented")
+	return buildQianfanRerankRequest(request)
 }
 
 func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error) {
-	//TODO implement me
-	return nil, errors.New("not implemented")
+	return buildQianfanEmbeddingRequest(request)
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
