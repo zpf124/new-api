@@ -1,16 +1,11 @@
 package baidu_v2
 
 var ModelList = []string{
+	// ERNIE 3.5 / 4.0 / 4.5 Turbo / 5.0 were retired on 2026-10-29; 5.1 is the
+	// only ERNIE model left on the Qianfan model list.
 	"ernie-5.1",
-	"ernie-5.0",
-	"ernie-5.0-thinking-preview",
 	"deepseek-v4-pro-0813",
 	"deepseek-v4-flash-0731",
-	"ernie-4.5-turbo-vl",
-	"ernie-4.5-turbo-vl-32k",
-	"ernie-4.5-turbo-20260402",
-	"ernie-4.5-turbo-32k",
-	"ernie-4.5-turbo-128k",
 	"glm-5.3-flash",
 	"glm-5.3",
 	"glm-5.2-fast",
