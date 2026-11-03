@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/relay/channel"
+	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
@@ -25,8 +26,15 @@ func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dt
 	return nil, errors.New("not implemented")
 }
 
+// ConvertClaudeRequest forwards Anthropic Messages requests unchanged. Qianfan
+// terminates the Anthropic protocol itself at /anthropic/v1/messages, so
+// converting to OpenAI chat here would drop thinking and tool blocks that the
+// native endpoint accepts.
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, req *dto.ClaudeRequest) (any, error) {
-	adaptor := openai.Adaptor{}
+	if req == nil {
+		return nil, errors.New("request is nil")
+	}
+	adaptor := claude.Adaptor{}
 	return adaptor.ConvertClaudeRequest(c, info, req)
 }
 
@@ -60,6 +68,12 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	// Anthropic Messages requests carry no relay mode, so this branch has to
+	// come before the mode switch: a /v1/messages request would otherwise fall
+	// through to "unsupported relay mode: 0".
+	if info.RelayFormat == types.RelayFormatClaude {
+		return fmt.Sprintf("%s/anthropic/v1/messages", info.ChannelBaseUrl), nil
+	}
 	switch info.RelayMode {
 	case constant.RelayModeChatCompletions:
 		return fmt.Sprintf("%s/v2/chat/completions", info.ChannelBaseUrl), nil
@@ -93,6 +107,21 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 		if keyParts[1] != "" {
 			req.Set("appid", keyParts[1])
 		}
+	}
+	if info.RelayFormat == types.RelayFormatClaude {
+		// The Anthropic-compatible endpoint authenticates with x-api-key
+		// rather than a Bearer token.
+		req.Set("x-api-key", keyParts[0])
+		anthropicVersion := ""
+		if c != nil && c.Request != nil {
+			anthropicVersion = c.Request.Header.Get("anthropic-version")
+		}
+		if anthropicVersion == "" {
+			anthropicVersion = "2023-06-01"
+		}
+		req.Set("anthropic-version", anthropicVersion)
+		claude.CommonClaudeHeadersOperation(c, req, info)
+		return nil
 	}
 	req.Set("Authorization", "Bearer "+keyParts[0])
 	return nil
@@ -138,9 +167,12 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if info.RelayFormat == types.RelayFormatClaude {
+		adaptor := claude.Adaptor{}
+		return adaptor.DoResponse(c, resp, info)
+	}
 	adaptor := openai.Adaptor{}
-	usage, err = adaptor.DoResponse(c, resp, info)
-	return
+	return adaptor.DoResponse(c, resp, info)
 }
 
 func (a *Adaptor) GetModelList() []string {

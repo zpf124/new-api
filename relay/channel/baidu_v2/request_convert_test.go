@@ -1,10 +1,16 @@
 package baidu_v2
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -117,4 +123,59 @@ func TestBuildQianfanRerankRequest(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+// TestGetRequestURLRoutesAnthropicNatively locks the native Anthropic path.
+// An Anthropic Messages request carries no relay mode, so routing it by mode
+// alone fails with "unsupported relay mode: 0" before any request is sent.
+func TestGetRequestURLRoutesAnthropicNatively(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: "https://qianfan.baidubce.com"},
+	}
+
+	requestURL, err := (&Adaptor{}).GetRequestURL(info)
+	require.NoError(t, err)
+	assert.Equal(t, "https://qianfan.baidubce.com/anthropic/v1/messages", requestURL)
+}
+
+func TestGetRequestURLKeepsV2PathsForOpenAI(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		RelayMode:   relayconstant.RelayModeChatCompletions,
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: "https://qianfan.baidubce.com"},
+	}
+
+	requestURL, err := (&Adaptor{}).GetRequestURL(info)
+	require.NoError(t, err)
+	assert.Equal(t, "https://qianfan.baidubce.com/v2/chat/completions", requestURL)
+}
+
+func TestSetupRequestHeaderUsesApiKeyForAnthropic(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{ApiKey: "bce-key|app-1"},
+	}
+
+	header := http.Header{}
+	require.NoError(t, (&Adaptor{}).SetupRequestHeader(c, &header, info))
+	assert.Equal(t, "bce-key", header.Get("x-api-key"))
+	assert.Equal(t, "2023-06-01", header.Get("anthropic-version"))
+	assert.Equal(t, "app-1", header.Get("appid"))
+	assert.Empty(t, header.Get("Authorization"))
+}
+
+func TestSetupRequestHeaderKeepsBearerForOpenAI(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	info := &relaycommon.RelayInfo{
+		RelayMode:   relayconstant.RelayModeChatCompletions,
+		ChannelMeta: &relaycommon.ChannelMeta{ApiKey: "bce-key"},
+	}
+
+	header := http.Header{}
+	require.NoError(t, (&Adaptor{}).SetupRequestHeader(c, &header, info))
+	assert.Equal(t, "Bearer bce-key", header.Get("Authorization"))
+	assert.Empty(t, header.Get("x-api-key"))
 }
