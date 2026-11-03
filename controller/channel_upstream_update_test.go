@@ -611,3 +611,31 @@ func TestDetectAllChannelUpstreamModelUpdatesRejectsExistingActiveTask(t *testin
 	require.Contains(t, recorder.Body.String(), existing.TaskID)
 	require.Contains(t, recorder.Body.String(), "A model update task is already running or queued")
 }
+
+// TestFetchBaiduV2ModelsUsesV2Endpoint locks the Qianfan V2 model list target.
+// V2 moved every inference path, including /v2/models, and the generic
+// /v1/models fallback does not exist on that host.
+func TestFetchBaiduV2ModelsUsesV2Endpoint(t *testing.T) {
+	received := make(chan *http.Request, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received <- r.Clone(r.Context())
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"ernie-4.5-8k"},{"id":"deepseek-v3.2"}]}`))
+	}))
+	defer server.Close()
+
+	baseURL := server.URL
+	channel := &model.Channel{
+		Type:    constant.ChannelTypeBaiduV2,
+		Key:     "qianfan-key",
+		BaseURL: &baseURL,
+	}
+
+	models, err := fetchChannelUpstreamModelIDs(channel)
+	require.NoError(t, err)
+	require.Equal(t, []string{"ernie-4.5-8k", "deepseek-v3.2"}, models)
+
+	request := <-received
+	assert.Equal(t, "/v2/models", request.URL.Path)
+	assert.Equal(t, "Bearer qianfan-key", request.Header.Get("Authorization"))
+}

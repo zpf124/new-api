@@ -433,6 +433,10 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 		} else {
 			url = fmt.Sprintf("%s/v1/models", baseURL)
 		}
+	case constant.ChannelTypeBaiduV2:
+		// Qianfan V2 moved every inference path to /v2, including the model
+		// list. The default /v1/models target does not exist on the V2 host.
+		url = fmt.Sprintf("%s/v2/models", baseURL)
 	default:
 		url = fmt.Sprintf("%s/v1/models", baseURL)
 	}
