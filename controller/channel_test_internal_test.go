@@ -124,6 +124,19 @@ func TestNewAPIChannelRegistration(t *testing.T) {
 	assert.Empty(t, constant.ChannelBaseURLs[constant.ChannelTypeNewAPI])
 }
 
+func TestHuaweiMaaSChannelRegistration(t *testing.T) {
+	apiType, ok := common.ChannelType2APIType(constant.ChannelTypeHuaweiMaaS)
+
+	require.True(t, ok)
+	assert.Equal(t, constant.APITypeHuaweiMaaS, apiType)
+	assert.Equal(t, "Huawei MaaS", constant.GetChannelTypeName(constant.ChannelTypeHuaweiMaaS))
+	require.Greater(t, len(constant.ChannelBaseURLs), constant.ChannelTypeHuaweiMaaS)
+	assert.Equal(t, "https://api.modelarts-maas.com", constant.ChannelBaseURLs[constant.ChannelTypeHuaweiMaaS])
+	// Custom channel number must stay above every upstream channel type so
+	// merging official updates cannot silently collide with this type.
+	assert.Greater(t, constant.ChannelTypeHuaweiMaaS, constant.ChannelTypeTaskPlugin)
+}
+
 func TestResponsesCompactChannelSupport(t *testing.T) {
 	tests := []struct {
 		name        string
